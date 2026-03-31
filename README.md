@@ -1,61 +1,67 @@
 # OpenForum
 
-OpenForum is a community discussion platform built for my Web Development 2 project.
-
-It is designed to be a simple Reddit-style forum where users can create accounts, join discussions, make posts, and interact with communities.
+OpenForum is a Reddit-style discussion app built with Next.js, Firebase Authentication, and Firestore.
 
 ## Features
 
-- User registration and login
-- Logout functionality
-- Protected pages for logged-in users
-- Home page
-- Login page
-- Register page
-- Profile page
-- Create Community page
-- Create Post page
-- Firebase Authentication
-- Firebase Firestore connection
-- Next.js App Router
-- Vercel deployment
+- User registration, login, logout, and protected routes
+- Community creation and community directory listing
+- Global search for communities and posts
+- Community detail pages with in-community post creation
+- Dynamic routes for communities and posts
+- Firestore-backed posts, communities, comments, and user profiles
+- Nested comment threads with replies
+- Edit and delete flows for posts and comments
 
-## Tech Stack
+## Routes
 
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-- Firebase Authentication
-- Firebase Firestore
-- Vercel
+- `/` home page with search, community listing, and recent posts
+- `/community` community directory
+- `/community/create` create a community
+- `/community/[communityId]` community detail page and in-community post composer
+- `/post/create` choose a community to post in
+- `/post/[postId]` post detail page with threaded comments
+- `/login`, `/register`, `/profile`
 
-## Project Structure
+## Firestore Collections
 
-```text
-app/
-  community/
-    create/
-      page.tsx
-  login/
-    page.tsx
-  post/
-    create/
-      page.tsx
-  profile/
-    page.tsx
-  register/
-    page.tsx
-  globals.css
-  layout.tsx
-  page.tsx
+- `users`
+- `communities`
+- `posts`
+- `comments`
 
-components/
-  AuthProvider.tsx
-  Navbar.tsx
-  ProtectedPage.tsx
+## Local Setup
 
-lib/
-  auth.ts
-  firebase.ts
-  firestore.ts
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Create `.env.local` with your Firebase web app values:
+
+   ```env
+   NEXT_PUBLIC_FIREBASE_API_KEY=your_key
+   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+   ```
+
+3. In Firebase Console:
+   - Enable Authentication with Email/Password.
+   - Create a Firestore database.
+   - Add the rules from `firestore.rules`.
+
+4. Start the app:
+
+   ```bash
+   npm run dev
+   ```
+
+## Notes
+
+- Search is implemented in the client by filtering loaded communities and posts.
+- Posts and comments use soft delete so discussion links stay stable.
+- The included Firestore rules are suitable for a course project or prototype. Tighten them before using this app in production.

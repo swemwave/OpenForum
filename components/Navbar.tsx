@@ -27,6 +27,7 @@ export default function Navbar() {
 
         <div className="flex items-center gap-4 text-sm">
           <Link href="/">Home</Link>
+          <Link href="/community">Communities</Link>
 
           {!loading && !user && (
             <>
@@ -38,7 +39,7 @@ export default function Navbar() {
           {!loading && user && (
             <>
               <Link href="/community/create">Create Community</Link>
-              <Link href="/post/create">Create Post</Link>
+              <Link href="/post/create">Write Post</Link>
               <Link href="/profile">Profile</Link>
               <button
                 onClick={handleLogout}

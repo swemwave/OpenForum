@@ -1,20 +1,20 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { loginUser } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError("");
 
     if (!email || !password) {
@@ -26,8 +26,8 @@ export default function LoginPage() {
       setLoading(true);
       await loginUser(email, password);
       router.push("/profile");
-    } catch (err: any) {
-      setError(err.message || "Login failed.");
+    } catch (submitError) {
+      setError(getErrorMessage(submitError));
     } finally {
       setLoading(false);
     }
@@ -43,7 +43,7 @@ export default function LoginPage() {
           placeholder="Email"
           className="w-full rounded border px-3 py-2"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(event) => setEmail(event.target.value)}
         />
 
         <input
@@ -51,10 +51,10 @@ export default function LoginPage() {
           placeholder="Password"
           className="w-full rounded border px-3 py-2"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(event) => setPassword(event.target.value)}
         />
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
         <button
           type="submit"
@@ -66,7 +66,7 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-4 text-sm text-gray-600">
-        Don’t have an account?{" "}
+        Don&apos;t have an account?{" "}
         <Link href="/register" className="underline">
           Register
         </Link>

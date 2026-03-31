@@ -1,13 +1,6 @@
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-
-type UserProfile = {
-  username: string;
-  email: string;
-  avatarUrl: string;
-  role: string;
-  createdAt: string;
-};
+import type { UserProfile } from "@/lib/types";
 
 export async function createUserProfile(uid: string, data: UserProfile) {
   await setDoc(doc(db, "users", uid), data);

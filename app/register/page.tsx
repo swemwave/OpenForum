@@ -1,13 +1,13 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { registerUser } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function RegisterPage() {
   const router = useRouter();
-
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,8 +15,8 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError("");
 
     if (!username || !email || !password || !confirmPassword) {
@@ -33,8 +33,8 @@ export default function RegisterPage() {
       setLoading(true);
       await registerUser(username, email, password);
       router.push("/profile");
-    } catch (err: any) {
-      setError(err.message || "Registration failed.");
+    } catch (submitError) {
+      setError(getErrorMessage(submitError));
     } finally {
       setLoading(false);
     }
@@ -50,7 +50,7 @@ export default function RegisterPage() {
           placeholder="Username"
           className="w-full rounded border px-3 py-2"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(event) => setUsername(event.target.value)}
         />
 
         <input
@@ -58,7 +58,7 @@ export default function RegisterPage() {
           placeholder="Email"
           className="w-full rounded border px-3 py-2"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(event) => setEmail(event.target.value)}
         />
 
         <input
@@ -66,7 +66,7 @@ export default function RegisterPage() {
           placeholder="Password"
           className="w-full rounded border px-3 py-2"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(event) => setPassword(event.target.value)}
         />
 
         <input
@@ -74,10 +74,10 @@ export default function RegisterPage() {
           placeholder="Confirm Password"
           className="w-full rounded border px-3 py-2"
           value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
+          onChange={(event) => setConfirmPassword(event.target.value)}
         />
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
         <button
           type="submit"
