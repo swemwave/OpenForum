@@ -13,6 +13,8 @@ export default function PostCard({
   post,
   showCommunity = true,
 }: PostCardProps) {
+  const voteScore = post.upvoteCount - post.downvoteCount;
+
   return (
     <article className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
@@ -24,7 +26,15 @@ export default function PostCard({
             {post.communityName}
           </Link>
         ) : null}
-        <span>By {post.authorName}</span>
+        <span>
+          By{" "}
+          <Link
+            href={`/users/${post.authorId}`}
+            className="font-medium text-gray-700 hover:underline"
+          >
+            {post.authorName}
+          </Link>
+        </span>
         <span>{formatDateTime(post.createdAt)}</span>
       </div>
 
@@ -39,9 +49,14 @@ export default function PostCard({
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-4 text-sm text-gray-500">
-        <span>
-          {post.commentCount} {post.commentCount === 1 ? "comment" : "comments"}
-        </span>
+        <div className="flex flex-wrap gap-3">
+          <span>
+            {voteScore} {voteScore === 1 ? "point" : "points"}
+          </span>
+          <span>
+            {post.commentCount} {post.commentCount === 1 ? "comment" : "comments"}
+          </span>
+        </div>
         <Link href={`/post/${post.id}`} className="font-medium text-gray-900">
           Read discussion
         </Link>

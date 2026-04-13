@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import PostCard from "@/components/PostCard";
 import { createPost, getCommunity, listPostsByCommunity } from "@/lib/forum";
+import { POST_CONTENT_MAX_LENGTH, POST_TITLE_MAX_LENGTH } from "@/lib/limits";
 import type { Community, ForumPost } from "@/lib/types";
 import { formatDateTime, getErrorMessage, getUserIdentity } from "@/lib/utils";
 
@@ -129,7 +130,15 @@ export default function CommunityDetailPage() {
           </div>
 
           <div className="rounded-xl bg-gray-100 px-5 py-4 text-sm text-gray-700">
-            <p>Created by {community.creatorName}</p>
+            <p>
+              Created by{" "}
+              <Link
+                href={`/users/${community.creatorId}`}
+                className="font-medium text-gray-900 underline"
+              >
+                {community.creatorName}
+              </Link>
+            </p>
             <p className="mt-1">{formatDateTime(community.createdAt)}</p>
             <p className="mt-1">
               {posts.length} live post{posts.length === 1 ? "" : "s"}
@@ -160,6 +169,8 @@ export default function CommunityDetailPage() {
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="What do you want to discuss?"
                 className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3"
+                maxLength={POST_TITLE_MAX_LENGTH}
+                required
               />
             </div>
 
@@ -173,6 +184,8 @@ export default function CommunityDetailPage() {
                 onChange={(event) => setContent(event.target.value)}
                 placeholder="Share the context, question, or idea."
                 className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3"
+                maxLength={POST_CONTENT_MAX_LENGTH}
+                required
               />
             </div>
 

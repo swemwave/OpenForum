@@ -34,7 +34,15 @@ export default function CommunityCard({
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-4 text-sm text-gray-500">
-        <p>Created by {community.creatorName}</p>
+        <p>
+          Created by{" "}
+          <Link
+            href={`/users/${community.creatorId}`}
+            className="font-medium text-gray-700 hover:underline"
+          >
+            {community.creatorName}
+          </Link>
+        </p>
         <p>{formatDateTime(community.createdAt)}</p>
       </div>
 

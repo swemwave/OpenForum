@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import ProtectedPage from "@/components/ProtectedPage";
 import { useAuth } from "@/components/AuthProvider";
 import { createCommunity } from "@/lib/forum";
+import {
+  COMMUNITY_DESCRIPTION_MAX_LENGTH,
+  COMMUNITY_NAME_MAX_LENGTH,
+} from "@/lib/limits";
 import { getErrorMessage, getUserIdentity } from "@/lib/utils";
 
 export default function CreateCommunityPage() {
@@ -69,6 +73,8 @@ export default function CreateCommunityPage() {
               onChange={(event) => setName(event.target.value)}
               placeholder="Frontend Patterns"
               className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3"
+              maxLength={COMMUNITY_NAME_MAX_LENGTH}
+              required
             />
           </div>
 
@@ -82,6 +88,8 @@ export default function CreateCommunityPage() {
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Describe what people should post, ask, and discuss here."
               className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3"
+              maxLength={COMMUNITY_DESCRIPTION_MAX_LENGTH}
+              required
             />
           </div>
 

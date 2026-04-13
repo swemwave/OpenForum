@@ -1,16 +1,31 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
   increment,
   query,
+  runTransaction,
   updateDoc,
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { Community, ForumComment, ForumPost, ForumUserIdentity } from "@/lib/types";
+import {
+  COMMENT_CONTENT_MAX_LENGTH,
+  COMMUNITY_DESCRIPTION_MAX_LENGTH,
+  COMMUNITY_NAME_MAX_LENGTH,
+  POST_CONTENT_MAX_LENGTH,
+  POST_TITLE_MAX_LENGTH,
+} from "@/lib/limits";
+import type {
+  Community,
+  ForumComment,
+  ForumPost,
+  ForumUserIdentity,
+  VoteValue,
+} from "@/lib/types";
 import { slugify } from "@/lib/utils";
 
 type CommunityRecord = Omit<Community, "id">;
@@ -40,7 +55,11 @@ type UpdatePostInput = {
 };
 
 type CommunitySnapshotData = CommunityRecord;
-type PostSnapshotData = PostRecord;
+type PostSnapshotData = Omit<
+  PostRecord,
+  "upvoteCount" | "downvoteCount"
+> &
+  Partial<Pick<PostRecord, "upvoteCount" | "downvoteCount">>;
 type CommentSnapshotData = CommentRecord;
 
 function sortByNewest<T extends { createdAt: string }>(items: T[]) {
@@ -57,6 +76,12 @@ function sortByOldest<T extends { createdAt: string }>(items: T[]) {
   );
 }
 
+function requireMaxLength(value: string, maxLength: number, fieldName: string) {
+  if (value.length > maxLength) {
+    throw new Error(`${fieldName} must be ${maxLength} characters or less.`);
+  }
+}
+
 function mapCommunity(
   id: string,
   data: CommunitySnapshotData
@@ -71,6 +96,8 @@ function mapPost(id: string, data: PostSnapshotData): ForumPost {
   return {
     id,
     ...data,
+    upvoteCount: data.upvoteCount ?? 0,
+    downvoteCount: data.downvoteCount ?? 0,
   };
 }
 
@@ -79,6 +106,31 @@ function mapComment(id: string, data: CommentSnapshotData): ForumComment {
     id,
     ...data,
   };
+}
+
+async function getLivePostCountsByCommunity() {
+  const snapshot = await getDocs(collection(db, "posts"));
+  const postCounts = new Map<string, number>();
+
+  snapshot.docs.forEach((postDoc) => {
+    const post = mapPost(postDoc.id, postDoc.data() as PostSnapshotData);
+
+    if (!post.isDeleted) {
+      postCounts.set(post.communityId, (postCounts.get(post.communityId) ?? 0) + 1);
+    }
+  });
+
+  return postCounts;
+}
+
+function applyLivePostCounts(
+  communities: Community[],
+  postCounts: Map<string, number>
+) {
+  return communities.map((community) => ({
+    ...community,
+    postCount: postCounts.get(community.id) ?? 0,
+  }));
 }
 
 async function requireCommunity(communityId: string) {
@@ -126,6 +178,13 @@ export async function createCommunity(
     throw new Error("Community name and description are required.");
   }
 
+  requireMaxLength(normalizedName, COMMUNITY_NAME_MAX_LENGTH, "Community name");
+  requireMaxLength(
+    normalizedDescription,
+    COMMUNITY_DESCRIPTION_MAX_LENGTH,
+    "Community description"
+  );
+
   const community: CommunityRecord = {
     name: normalizedName,
     description: normalizedDescription,
@@ -142,12 +201,15 @@ export async function createCommunity(
 }
 
 export async function listCommunities() {
-  const snapshot = await getDocs(collection(db, "communities"));
+  const [snapshot, postCounts] = await Promise.all([
+    getDocs(collection(db, "communities")),
+    getLivePostCountsByCommunity(),
+  ]);
   const communities = snapshot.docs.map((communityDoc) =>
     mapCommunity(communityDoc.id, communityDoc.data() as CommunitySnapshotData)
   );
 
-  return sortByNewest(communities);
+  return sortByNewest(applyLivePostCounts(communities, postCounts));
 }
 
 export async function getCommunity(communityId: string) {
@@ -173,6 +235,9 @@ export async function createPost(
     throw new Error("Post title and content are required.");
   }
 
+  requireMaxLength(normalizedTitle, POST_TITLE_MAX_LENGTH, "Post title");
+  requireMaxLength(normalizedContent, POST_CONTENT_MAX_LENGTH, "Post content");
+
   const post: PostRecord = {
     communityId: community.id,
     communityName: community.name,
@@ -183,6 +248,8 @@ export async function createPost(
     createdAt: timestamp,
     updatedAt: timestamp,
     commentCount: 0,
+    upvoteCount: 0,
+    downvoteCount: 0,
     isDeleted: false,
   };
 
@@ -213,6 +280,31 @@ export async function listPostsByCommunity(communityId: string) {
     .filter((post) => !post.isDeleted);
 
   return sortByNewest(posts);
+}
+
+export async function listPostsByAuthor(authorId: string) {
+  const snapshot = await getDocs(
+    query(collection(db, "posts"), where("authorId", "==", authorId))
+  );
+  const posts = snapshot.docs
+    .map((postDoc) => mapPost(postDoc.id, postDoc.data() as PostSnapshotData))
+    .filter((post) => !post.isDeleted);
+
+  return sortByNewest(posts);
+}
+
+export async function listCommunitiesByCreator(creatorId: string) {
+  const [snapshot, postCounts] = await Promise.all([
+    getDocs(
+      query(collection(db, "communities"), where("creatorId", "==", creatorId))
+    ),
+    getLivePostCountsByCommunity(),
+  ]);
+  const communities = snapshot.docs.map((communityDoc) =>
+    mapCommunity(communityDoc.id, communityDoc.data() as CommunitySnapshotData)
+  );
+
+  return sortByNewest(applyLivePostCounts(communities, postCounts));
 }
 
 export async function getPost(postId: string) {
@@ -247,6 +339,9 @@ export async function updatePost(
     throw new Error("Post title and content are required.");
   }
 
+  requireMaxLength(normalizedTitle, POST_TITLE_MAX_LENGTH, "Post title");
+  requireMaxLength(normalizedContent, POST_CONTENT_MAX_LENGTH, "Post content");
+
   await updateDoc(doc(db, "posts", postId), {
     title: normalizedTitle,
     content: normalizedContent,
@@ -254,11 +349,15 @@ export async function updatePost(
   });
 }
 
-export async function deletePost(postId: string, actorUid: string) {
+export async function deletePost(
+  postId: string,
+  actorUid: string,
+  canModerate = false
+) {
   const post = await requirePost(postId);
 
-  if (post.authorId !== actorUid) {
-    throw new Error("You can only delete your own posts.");
+  if (post.authorId !== actorUid && !canModerate) {
+    throw new Error("Only the author or a moderator can delete this post.");
   }
 
   if (post.isDeleted) {
@@ -266,6 +365,11 @@ export async function deletePost(postId: string, actorUid: string) {
   }
 
   const timestamp = new Date().toISOString();
+
+  if (canModerate) {
+    await deleteDoc(doc(db, "posts", postId));
+    return;
+  }
 
   await updateDoc(doc(db, "posts", postId), {
     title: "[deleted]",
@@ -277,6 +381,79 @@ export async function deletePost(postId: string, actorUid: string) {
   await updateDoc(doc(db, "communities", post.communityId), {
     postCount: increment(-1),
     updatedAt: timestamp,
+  });
+}
+
+function getPostVoteRef(postId: string, userId: string) {
+  return doc(db, "postVotes", postId, "users", userId);
+}
+
+export async function getPostVote(
+  postId: string,
+  userId: string
+): Promise<VoteValue | 0> {
+  const voteSnapshot = await getDoc(getPostVoteRef(postId, userId));
+
+  if (!voteSnapshot.exists()) {
+    return 0;
+  }
+
+  const value = voteSnapshot.data().value;
+  return value === 1 || value === -1 ? value : 0;
+}
+
+export async function voteOnPost(
+  postId: string,
+  actor: ForumUserIdentity,
+  value: VoteValue
+): Promise<VoteValue | 0> {
+  const postRef = doc(db, "posts", postId);
+  const voteRef = getPostVoteRef(postId, actor.uid);
+  const timestamp = new Date().toISOString();
+
+  return runTransaction(db, async (transaction) => {
+    const postSnapshot = await transaction.get(postRef);
+
+    if (!postSnapshot.exists()) {
+      throw new Error("Post not found.");
+    }
+
+    const post = mapPost(postSnapshot.id, postSnapshot.data() as PostSnapshotData);
+
+    if (post.isDeleted) {
+      throw new Error("You cannot vote on a deleted post.");
+    }
+
+    const voteSnapshot = await transaction.get(voteRef);
+    const existingVoteData = voteSnapshot.exists() ? voteSnapshot.data() : null;
+    const existingValue: VoteValue | 0 =
+      existingVoteData?.value === 1 || existingVoteData?.value === -1
+        ? existingVoteData.value
+        : 0;
+    const nextValue: VoteValue | 0 = existingValue === value ? 0 : value;
+    const upvoteDelta =
+      (nextValue === 1 ? 1 : 0) - (existingValue === 1 ? 1 : 0);
+    const downvoteDelta =
+      (nextValue === -1 ? 1 : 0) - (existingValue === -1 ? 1 : 0);
+    transaction.update(postRef, {
+      upvoteCount: Math.max(0, post.upvoteCount + upvoteDelta),
+      downvoteCount: Math.max(0, post.downvoteCount + downvoteDelta),
+    });
+
+    if (nextValue === 0) {
+      transaction.delete(voteRef);
+      return nextValue;
+    }
+
+    transaction.set(voteRef, {
+      postId,
+      userId: actor.uid,
+      value: nextValue,
+      createdAt: existingVoteData?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    });
+
+    return nextValue;
   });
 }
 
@@ -295,6 +472,8 @@ export async function createComment(
   if (!normalizedContent) {
     throw new Error("Comment content is required.");
   }
+
+  requireMaxLength(normalizedContent, COMMENT_CONTENT_MAX_LENGTH, "Comment content");
 
   if (input.parentCommentId) {
     const parentComment = await requireComment(input.parentCommentId);
@@ -337,6 +516,17 @@ export async function listCommentsByPost(postId: string) {
   return sortByOldest(comments);
 }
 
+export async function listCommentsByAuthor(authorId: string) {
+  const snapshot = await getDocs(
+    query(collection(db, "comments"), where("authorId", "==", authorId))
+  );
+  const comments = snapshot.docs.map((commentDoc) =>
+    mapComment(commentDoc.id, commentDoc.data() as CommentSnapshotData)
+  );
+
+  return sortByNewest(comments);
+}
+
 export async function updateComment(
   commentId: string,
   actorUid: string,
@@ -357,6 +547,8 @@ export async function updateComment(
   if (!normalizedContent) {
     throw new Error("Comment content is required.");
   }
+
+  requireMaxLength(normalizedContent, COMMENT_CONTENT_MAX_LENGTH, "Comment content");
 
   await updateDoc(doc(db, "comments", commentId), {
     content: normalizedContent,

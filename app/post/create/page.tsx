@@ -46,11 +46,13 @@ export default function CreatePostPage() {
     };
   }, []);
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const hasSearchQuery = normalizedQuery.length > 0;
   const filteredCommunities = communities.filter((community) =>
     [community.name, community.description, community.creatorName]
       .join(" ")
       .toLowerCase()
-      .includes(searchQuery.trim().toLowerCase())
+      .includes(normalizedQuery)
   );
 
   return (
@@ -107,7 +109,9 @@ export default function CreatePostPage() {
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
-            No communities matched your search.
+            {hasSearchQuery
+              ? "No communities matched your search."
+              : "No communities exist yet. Create a community before writing a post."}
           </div>
         )}
       </div>

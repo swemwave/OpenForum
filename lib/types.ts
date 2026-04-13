@@ -1,9 +1,18 @@
+export type UserRole = "user" | "moderator";
+
 export type UserProfile = {
   username: string;
   email: string;
   avatarUrl: string;
-  role: string;
+  role: UserRole;
   createdAt: string;
+};
+
+export type PublicUserProfile = Pick<
+  UserProfile,
+  "username" | "avatarUrl" | "role" | "createdAt"
+> & {
+  id: string;
 };
 
 export type ForumUserIdentity = {
@@ -34,6 +43,8 @@ export type ForumPost = {
   createdAt: string;
   updatedAt: string;
   commentCount: number;
+  upvoteCount: number;
+  downvoteCount: number;
   isDeleted: boolean;
 };
 
@@ -52,4 +63,15 @@ export type ForumComment = {
 
 export type CommentTreeNode = ForumComment & {
   replies: CommentTreeNode[];
+};
+
+export type VoteValue = 1 | -1;
+
+export type PostVote = {
+  id: string;
+  postId: string;
+  userId: string;
+  value: VoteValue;
+  createdAt: string;
+  updatedAt: string;
 };

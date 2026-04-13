@@ -6,24 +6,335 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isModerator() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "moderator";
+    }
+
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function nonEmptyString(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    function sameCommunityName(communityId, communityName) {
+      return exists(/databases/$(database)/documents/communities/$(communityId))
+        && get(/databases/$(database)/documents/communities/$(communityId)).data.name == communityName;
+    }
+
+    function validParentComment(parentCommentId, postId) {
+      return parentCommentId == null
+        || (
+          exists(/databases/$(database)/documents/comments/$(parentCommentId))
+          && get(/databases/$(database)/documents/comments/$(parentCommentId)).data.postId == postId
+        );
+    }
+
+    function validPostForComment(postId, communityId) {
+      return exists(/databases/$(database)/documents/posts/$(postId))
+        && get(/databases/$(database)/documents/posts/$(postId)).data.communityId == communityId
+        && get(/databases/$(database)/documents/posts/$(postId)).data.isDeleted == false;
+    }
+
+    function validPostForVote(postId) {
+      return exists(/databases/$(database)/documents/posts/$(postId))
+        && get(/databases/$(database)/documents/posts/$(postId)).data.isDeleted == false;
+    }
+
+    function validCounterDelta(field) {
+      return request.resource.data[field] is int
+        && request.resource.data[field] >= 0
+        && (
+          request.resource.data[field] == resource.data[field] + 1
+          || request.resource.data[field] == resource.data[field] - 1
+        );
+    }
+
+    function existingPostVoteCount(field) {
+      return resource.data.keys().hasAny([field]) ? resource.data[field] : 0;
+    }
+
+    function validVoteValue(value) {
+      return value == 1 || value == -1;
+    }
+
+    function validVoteCounterUpdate() {
+      return request.resource.data.upvoteCount is int
+        && request.resource.data.downvoteCount is int
+        && request.resource.data.upvoteCount >= 0
+        && request.resource.data.downvoteCount >= 0
+        && (
+          (
+            request.resource.data.upvoteCount == existingPostVoteCount("upvoteCount") + 1
+            && request.resource.data.downvoteCount == existingPostVoteCount("downvoteCount")
+          )
+          || (
+            request.resource.data.upvoteCount == existingPostVoteCount("upvoteCount") - 1
+            && request.resource.data.downvoteCount == existingPostVoteCount("downvoteCount")
+          )
+          || (
+            request.resource.data.upvoteCount == existingPostVoteCount("upvoteCount")
+            && request.resource.data.downvoteCount == existingPostVoteCount("downvoteCount") + 1
+          )
+          || (
+            request.resource.data.upvoteCount == existingPostVoteCount("upvoteCount")
+            && request.resource.data.downvoteCount == existingPostVoteCount("downvoteCount") - 1
+          )
+          || (
+            request.resource.data.upvoteCount == existingPostVoteCount("upvoteCount") + 1
+            && request.resource.data.downvoteCount == existingPostVoteCount("downvoteCount") - 1
+          )
+          || (
+            request.resource.data.upvoteCount == existingPostVoteCount("upvoteCount") - 1
+            && request.resource.data.downvoteCount == existingPostVoteCount("downvoteCount") + 1
+          )
+        );
+    }
+
     match /users/{userId} {
+      allow read: if isOwner(userId) || isModerator();
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "username",
+          "email",
+          "avatarUrl",
+          "role",
+          "createdAt",
+        ])
+        && nonEmptyString(request.resource.data.username, 32)
+        && nonEmptyString(request.resource.data.email, 320)
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.role == "user"
+        && request.resource.data.createdAt is string;
+      allow update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "username",
+          "email",
+          "avatarUrl",
+          "role",
+          "createdAt",
+        ])
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt
+        && nonEmptyString(request.resource.data.username, 32)
+        && request.resource.data.avatarUrl is string;
+      allow delete: if false;
+    }
+
+    match /publicProfiles/{userId} {
       allow read: if true;
-      allow write: if signedIn() && request.auth.uid == userId;
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "username",
+          "avatarUrl",
+          "role",
+          "createdAt",
+        ])
+        && nonEmptyString(request.resource.data.username, 32)
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.role == "user"
+        && request.resource.data.createdAt is string;
+      allow update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "username",
+          "avatarUrl",
+          "role",
+          "createdAt",
+        ])
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt
+        && nonEmptyString(request.resource.data.username, 32)
+        && request.resource.data.avatarUrl is string;
+      allow delete: if false;
     }
 
     match /communities/{communityId} {
       allow read: if true;
-      allow write: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "name",
+          "description",
+          "creatorId",
+          "creatorName",
+          "createdAt",
+          "updatedAt",
+          "postCount",
+          "slug",
+        ])
+        && request.resource.data.creatorId == request.auth.uid
+        && nonEmptyString(request.resource.data.name, 60)
+        && nonEmptyString(request.resource.data.description, 280)
+        && nonEmptyString(request.resource.data.creatorName, 100)
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.createdAt == request.resource.data.updatedAt
+        && request.resource.data.postCount == 0
+        && nonEmptyString(request.resource.data.slug, 80);
+      allow update: if signedIn()
+        && changedOnly(["postCount", "updatedAt"])
+        && request.resource.data.updatedAt is string
+        && validCounterDelta("postCount");
+      allow delete: if false;
     }
 
     match /posts/{postId} {
       allow read: if true;
-      allow write: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "communityId",
+          "communityName",
+          "title",
+          "content",
+          "authorId",
+          "authorName",
+          "createdAt",
+          "updatedAt",
+          "commentCount",
+          "upvoteCount",
+          "downvoteCount",
+          "isDeleted",
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        && nonEmptyString(request.resource.data.communityId, 128)
+        && sameCommunityName(
+          request.resource.data.communityId,
+          request.resource.data.communityName
+        )
+        && nonEmptyString(request.resource.data.title, 120)
+        && nonEmptyString(request.resource.data.content, 5000)
+        && nonEmptyString(request.resource.data.authorName, 100)
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.createdAt == request.resource.data.updatedAt
+        && request.resource.data.commentCount == 0
+        && request.resource.data.upvoteCount == 0
+        && request.resource.data.downvoteCount == 0
+        && request.resource.data.isDeleted == false;
+      allow update: if (
+          isOwner(resource.data.authorId)
+          && resource.data.isDeleted == false
+          && request.resource.data.isDeleted == false
+          && changedOnly(["title", "content", "updatedAt"])
+          && request.resource.data.updatedAt is string
+          && nonEmptyString(request.resource.data.title, 120)
+          && nonEmptyString(request.resource.data.content, 5000)
+        )
+        || (
+          (isOwner(resource.data.authorId) || isModerator())
+          && resource.data.isDeleted == false
+          && changedOnly(["title", "content", "isDeleted", "updatedAt"])
+          && request.resource.data.updatedAt is string
+          && request.resource.data.title == "[deleted]"
+          && request.resource.data.content == ""
+          && request.resource.data.isDeleted == true
+        )
+        || (
+          signedIn()
+          && changedOnly(["commentCount", "updatedAt"])
+          && request.resource.data.updatedAt is string
+          && validCounterDelta("commentCount")
+        )
+        || (
+          signedIn()
+          && changedOnly(["upvoteCount", "downvoteCount"])
+          && validVoteCounterUpdate()
+        );
+      allow delete: if isModerator();
+    }
+
+    match /postVotes/{postId}/users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "postId",
+          "userId",
+          "value",
+          "createdAt",
+          "updatedAt",
+        ])
+        && request.resource.data.postId == postId
+        && request.resource.data.userId == userId
+        && validPostForVote(postId)
+        && validVoteValue(request.resource.data.value)
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string;
+      allow update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "postId",
+          "userId",
+          "value",
+          "createdAt",
+          "updatedAt",
+        ])
+        && resource.data.postId == postId
+        && resource.data.userId == userId
+        && request.resource.data.postId == postId
+        && request.resource.data.userId == userId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validPostForVote(postId)
+        && validVoteValue(request.resource.data.value)
+        && request.resource.data.updatedAt is string;
+      allow delete: if isOwner(userId)
+        && resource.data.postId == postId
+        && resource.data.userId == userId;
     }
 
     match /comments/{commentId} {
       allow read: if true;
-      allow write: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "postId",
+          "communityId",
+          "parentCommentId",
+          "content",
+          "authorId",
+          "authorName",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        && nonEmptyString(request.resource.data.postId, 128)
+        && nonEmptyString(request.resource.data.communityId, 128)
+        && validPostForComment(
+          request.resource.data.postId,
+          request.resource.data.communityId
+        )
+        && validParentComment(
+          request.resource.data.parentCommentId,
+          request.resource.data.postId
+        )
+        && nonEmptyString(request.resource.data.content, 2000)
+        && nonEmptyString(request.resource.data.authorName, 100)
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.createdAt == request.resource.data.updatedAt
+        && request.resource.data.isDeleted == false;
+      allow update: if (
+          isOwner(resource.data.authorId)
+          && resource.data.isDeleted == false
+          && request.resource.data.isDeleted == false
+          && changedOnly(["content", "updatedAt"])
+          && request.resource.data.updatedAt is string
+          && nonEmptyString(request.resource.data.content, 2000)
+        )
+        || (
+          isOwner(resource.data.authorId)
+          && resource.data.isDeleted == false
+          && changedOnly(["content", "isDeleted", "updatedAt"])
+          && request.resource.data.updatedAt is string
+          && request.resource.data.content == ""
+          && request.resource.data.isDeleted == true
+        );
+      allow delete: if false;
     }
   }
 }
