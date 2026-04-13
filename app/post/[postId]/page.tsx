@@ -10,28 +10,38 @@ import {
   deleteComment,
   deletePost,
   getPost,
+  getPostVote,
   listCommentsByPost,
   updateComment,
   updatePost,
+  voteOnPost,
 } from "@/lib/forum";
-import type { ForumComment, ForumPost } from "@/lib/types";
+import {
+  COMMENT_CONTENT_MAX_LENGTH,
+  POST_CONTENT_MAX_LENGTH,
+  POST_TITLE_MAX_LENGTH,
+} from "@/lib/limits";
+import type { ForumComment, ForumPost, VoteValue } from "@/lib/types";
 import { formatDateTime, getErrorMessage, getUserIdentity } from "@/lib/utils";
 
 export default function PostDetailPage() {
   const params = useParams<{ postId: string }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isModerator } = useAuth();
   const postId = params.postId;
   const [post, setPost] = useState<ForumPost | null>(null);
   const [comments, setComments] = useState<ForumComment[]>([]);
+  const [currentVote, setCurrentVote] = useState<VoteValue | 0>(0);
   const [commentContent, setCommentContent] = useState("");
   const [editedTitle, setEditedTitle] = useState("");
   const [editedContent, setEditedContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [voteLoading, setVoteLoading] = useState(false);
   const [isEditingPost, setIsEditingPost] = useState(false);
   const [error, setError] = useState("");
   const [commentError, setCommentError] = useState("");
+  const [voteError, setVoteError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -71,6 +81,40 @@ export default function PostDetailPage() {
       isMounted = false;
     };
   }, [postId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCurrentVote() {
+      if (!user) {
+        setCurrentVote(0);
+        return;
+      }
+
+      try {
+        setVoteError("");
+        const vote = await getPostVote(postId, user.uid);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setCurrentVote(vote);
+      } catch (loadVoteError) {
+        if (!isMounted) {
+          return;
+        }
+
+        setVoteError(getErrorMessage(loadVoteError));
+      }
+    }
+
+    void loadCurrentVote();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [postId, user]);
 
   async function refreshDiscussion() {
     const [postData, commentData] = await Promise.all([
@@ -116,7 +160,9 @@ export default function PostDetailPage() {
       return;
     }
 
-    const shouldDelete = window.confirm("Delete this post?");
+    const shouldDelete = window.confirm(
+      isOwner ? "Delete this post?" : "Remove this post as a moderator?"
+    );
 
     if (!shouldDelete) {
       return;
@@ -125,11 +171,36 @@ export default function PostDetailPage() {
     try {
       setBusy(true);
       setError("");
-      await deletePost(post.id, user.uid);
+      await deletePost(post.id, user.uid, isModerator);
       router.push(`/community/${post.communityId}`);
     } catch (deleteError) {
       setError(getErrorMessage(deleteError));
       setBusy(false);
+    }
+  }
+
+  async function handleVote(value: VoteValue) {
+    const identity = getUserIdentity(user);
+
+    if (!identity) {
+      setVoteError("You need to be logged in to vote.");
+      return;
+    }
+
+    if (!post || post.isDeleted) {
+      return;
+    }
+
+    try {
+      setVoteLoading(true);
+      setVoteError("");
+      const nextVote = await voteOnPost(post.id, identity, value);
+      setCurrentVote(nextVote);
+      await refreshDiscussion();
+    } catch (voteSubmitError) {
+      setVoteError(getErrorMessage(voteSubmitError));
+    } finally {
+      setVoteLoading(false);
     }
   }
 
@@ -224,6 +295,18 @@ export default function PostDetailPage() {
   }
 
   const isOwner = user?.uid === post.authorId;
+  const canManagePost = (isOwner || isModerator) && !post.isDeleted;
+  const voteScore = post.upvoteCount - post.downvoteCount;
+  const upvoteLabel = voteLoading
+    ? "Saving..."
+    : currentVote === 1
+      ? "Upvoted"
+      : "Upvote";
+  const downvoteLabel = voteLoading
+    ? "Saving..."
+    : currentVote === -1
+      ? "Downvoted"
+      : "Downvote";
 
   return (
     <section className="space-y-8">
@@ -232,11 +315,20 @@ export default function PostDetailPage() {
           <Link href={`/community/${post.communityId}`} className="font-medium">
             {post.communityName}
           </Link>
-          <span>By {post.authorName}</span>
+          <span>
+            By{" "}
+            <Link
+              href={`/users/${post.authorId}`}
+              className="font-medium text-gray-700 hover:underline"
+            >
+              {post.authorName}
+            </Link>
+          </span>
           <span>{formatDateTime(post.createdAt)}</span>
           <span>
             {post.commentCount} {post.commentCount === 1 ? "comment" : "comments"}
           </span>
+          <span>{voteScore} {voteScore === 1 ? "point" : "points"}</span>
         </div>
 
         <div className="mt-6">
@@ -255,6 +347,8 @@ export default function PostDetailPage() {
                   value={editedTitle}
                   onChange={(event) => setEditedTitle(event.target.value)}
                   className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3"
+                  maxLength={POST_TITLE_MAX_LENGTH}
+                  required
                 />
               </div>
 
@@ -267,6 +361,8 @@ export default function PostDetailPage() {
                   value={editedContent}
                   onChange={(event) => setEditedContent(event.target.value)}
                   className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3"
+                  maxLength={POST_CONTENT_MAX_LENGTH}
+                  required
                 />
               </div>
 
@@ -302,26 +398,90 @@ export default function PostDetailPage() {
           )}
         </div>
 
-        {isOwner && !post.isDeleted ? (
+        {!post.isDeleted ? (
+          <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-gray-600">
+                <p className="font-medium text-gray-900">
+                  {voteScore} {voteScore === 1 ? "point" : "points"}
+                </p>
+                <p>
+                  {post.upvoteCount} upvote
+                  {post.upvoteCount === 1 ? "" : "s"} - {post.downvoteCount}{" "}
+                  downvote{post.downvoteCount === 1 ? "" : "s"}
+                </p>
+              </div>
+
+              {user ? (
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleVote(1)}
+                    disabled={voteLoading}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                      currentVote === 1
+                        ? "bg-black text-white"
+                        : "border border-gray-300 bg-white text-gray-700"
+                    }`}
+                  >
+                    {upvoteLabel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleVote(-1)}
+                    disabled={voteLoading}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                      currentVote === -1
+                        ? "bg-black text-white"
+                        : "border border-gray-300 bg-white text-gray-700"
+                    }`}
+                  >
+                    {downvoteLabel}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600">
+                  <Link href="/login" className="font-medium text-gray-900 underline">
+                    Log in
+                  </Link>{" "}
+                  to vote on this post.
+                </p>
+              )}
+            </div>
+
+            {voteError ? (
+              <p className="mt-3 text-sm text-red-600">{voteError}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {canManagePost ? (
           <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setIsEditingPost(true);
-                setError("");
-              }}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
-            >
-              Edit post
-            </button>
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingPost(true);
+                  setError("");
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+              >
+                Edit post
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={handlePostDelete}
               disabled={busy}
               className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white"
             >
-              Delete post
+              {isOwner ? "Delete post" : "Remove post"}
             </button>
+            {!isOwner && isModerator ? (
+              <span className="rounded-lg bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800">
+                Moderator action
+              </span>
+            ) : null}
           </div>
         ) : null}
       </article>
@@ -349,6 +509,8 @@ export default function PostDetailPage() {
               onChange={(event) => setCommentContent(event.target.value)}
               placeholder="Join the discussion"
               className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3"
+              maxLength={COMMENT_CONTENT_MAX_LENGTH}
+              required
             />
 
             {commentError ? (

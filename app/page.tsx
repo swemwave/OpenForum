@@ -55,6 +55,7 @@ export default function HomePage() {
   }, []);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const hasSearchQuery = normalizedQuery.length > 0;
   const filteredCommunities = communities.filter((community) => {
     if (!normalizedQuery) {
       return true;
@@ -153,7 +154,9 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
-                No communities matched your search.
+                {hasSearchQuery
+                  ? "No communities matched your search."
+                  : "No communities yet. Create the first one to get the forum moving."}
               </div>
             )}
           </div>
@@ -174,7 +177,9 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
-                No posts matched your search.
+                {hasSearchQuery
+                  ? "No posts matched your search."
+                  : "No posts yet. Start a discussion from any community page."}
               </div>
             )}
           </div>

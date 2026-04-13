@@ -48,11 +48,13 @@ export default function CommunityIndexPage() {
     };
   }, []);
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const hasSearchQuery = normalizedQuery.length > 0;
   const filteredCommunities = communities.filter((community) =>
     [community.name, community.description, community.creatorName]
       .join(" ")
       .toLowerCase()
-      .includes(searchQuery.trim().toLowerCase())
+      .includes(normalizedQuery)
   );
 
   return (
@@ -111,7 +113,9 @@ export default function CommunityIndexPage() {
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
-          No communities matched your search.
+          {hasSearchQuery
+            ? "No communities matched your search."
+            : "No communities yet. Create the first one to open the forum."}
         </div>
       )}
     </section>

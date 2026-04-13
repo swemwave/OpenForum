@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { COMMENT_CONTENT_MAX_LENGTH } from "@/lib/limits";
 import type { CommentTreeNode, ForumComment } from "@/lib/types";
 import { buildCommentTree, formatDateTime, getErrorMessage } from "@/lib/utils";
 
@@ -93,7 +95,12 @@ function CommentItem({
     <div className={depth > 0 ? "mt-4 border-l border-gray-200 pl-5" : ""}>
       <article className="rounded-xl bg-gray-50 p-4">
         <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
-          <span className="font-medium text-gray-900">{comment.authorName}</span>
+          <Link
+            href={`/users/${comment.authorId}`}
+            className="font-medium text-gray-900 hover:underline"
+          >
+            {comment.authorName}
+          </Link>
           <span>{formatDateTime(comment.createdAt)}</span>
           {comment.updatedAt !== comment.createdAt && !comment.isDeleted ? (
             <span className="text-xs uppercase tracking-wide text-gray-400">
@@ -113,6 +120,8 @@ function CommentItem({
                 onChange={(event) => setEditContent(event.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
                 placeholder="Edit your comment"
+                maxLength={COMMENT_CONTENT_MAX_LENGTH}
+                required
               />
               <div className="flex flex-wrap gap-3">
                 <button
@@ -190,6 +199,8 @@ function CommentItem({
               onChange={(event) => setReplyContent(event.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2"
               placeholder="Write your reply"
+              maxLength={COMMENT_CONTENT_MAX_LENGTH}
+              required
             />
             <div className="flex flex-wrap gap-3">
               <button
