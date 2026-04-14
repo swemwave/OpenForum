@@ -25,9 +25,17 @@ export default function Navbar() {
   return (
     <nav className="border-b bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" className="text-xl font-bold">
-          OpenForum
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/" className="text-xl font-bold">
+            OpenForum
+          </Link>
+
+          {!loading && isModerator ? (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+              Moderator
+            </span>
+          ) : null}
+        </div>
 
         <div className="flex items-center gap-4 text-sm">
           <Link href="/">Home</Link>
@@ -36,12 +44,6 @@ export default function Navbar() {
           {authError ? (
             <span className="text-xs font-medium text-red-600">
               Profile unavailable
-            </span>
-          ) : null}
-
-          {!loading && isModerator ? (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
-              Moderator
             </span>
           ) : null}
 
